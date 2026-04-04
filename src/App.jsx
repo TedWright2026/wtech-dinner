@@ -20,9 +20,10 @@ export default function App() {
       <style>{globalStyles}</style>
       <div className="bg">
         <header className="hdr">
-          <div className="hdr-badge">WTech Fire Group · Albufeira 2026</div>
+          <img src="/wtech-logo.png" alt="WTech Fire Group" className="hdr-logo" />
+          <div className="hdr-divider" />
           <h1>Wednesday Evening<br /><em>Dinner Selection</em></h1>
-          <p>Wednesday 22 April 2026 · Nearby Restaurant · Albufeira</p>
+          <p>Wednesday 22 April 2026 · O'Pescatore · Albufeira</p>
           <div className="hdr-nav">
             <button className={`nav-btn ${view === 'guest' ? 'active' : ''}`} onClick={() => setView('guest')}>Select My Meal</button>
             <button className={`nav-btn ${view === 'admin' ? 'active' : ''}`} onClick={() => setView('admin')}>Admin</button>
@@ -640,15 +641,16 @@ const globalStyles = `
   }
 
   /* HEADER */
-  .hdr { padding: 48px 24px 0; text-align: center; border-bottom: 1px solid rgba(255,255,255,0.07); }
-  .hdr-badge { display: inline-block; font-size: 11px; font-weight: 600; letter-spacing: 0.18em; text-transform: uppercase; color: ${RED}; background: rgba(232,66,42,0.1); border: 1px solid rgba(232,66,42,0.25); padding: 6px 16px; border-radius: 100px; margin-bottom: 20px; }
+  .hdr { padding: 40px 24px 0; text-align: center; border-bottom: 1px solid rgba(255,255,255,0.07); background: linear-gradient(180deg, rgba(27,75,138,0.12) 0%, transparent 100%); }
+  .hdr-logo { height: 90px; width: auto; margin-bottom: 20px; filter: drop-shadow(0 4px 12px rgba(27,75,138,0.4)); }
+  .hdr-divider { width: 48px; height: 3px; background: linear-gradient(90deg, ${NAVY}, ${RED}); border-radius: 100px; margin: 0 auto 20px; }
   .hdr h1 { font-family: 'Cormorant Garamond', serif; font-size: clamp(28px, 5vw, 52px); font-weight: 600; line-height: 1.1; letter-spacing: -0.02em; margin-bottom: 10px; }
   .hdr h1 em { font-style: normal; background: linear-gradient(135deg, #2a6dd9, ${NAVY}); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
-  .hdr p { font-size: 13px; color: rgba(240,237,232,0.4); letter-spacing: 0.06em; margin-bottom: 24px; }
+  .hdr p { font-size: 13px; color: rgba(240,237,232,0.45); letter-spacing: 0.06em; margin-bottom: 24px; }
   .hdr-nav { display: flex; justify-content: center; gap: 8px; padding: 16px 0; }
-  .nav-btn { padding: 8px 20px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 100px; color: rgba(240,237,232,0.6); font-family: 'DM Sans', sans-serif; font-size: 13px; cursor: pointer; transition: all 0.2s; }
+  .nav-btn { padding: 8px 22px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 100px; color: rgba(240,237,232,0.6); font-family: 'DM Sans', sans-serif; font-size: 13px; cursor: pointer; transition: all 0.2s; font-weight: 500; }
   .nav-btn:hover { background: rgba(255,255,255,0.09); color: #f0ede8; }
-  .nav-btn.active { background: rgba(27,75,138,0.25); border-color: ${NAVY}; color: #f0ede8; font-weight: 600; }
+  .nav-btn.active { background: ${NAVY}; border-color: ${NAVY}; color: #fff; font-weight: 600; box-shadow: 0 4px 14px rgba(27,75,138,0.4); }
 
   /* WRAP */
   .wrap { max-width: 660px; margin: 0 auto; padding: 40px 20px 80px; }
