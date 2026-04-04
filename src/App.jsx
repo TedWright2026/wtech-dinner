@@ -449,21 +449,39 @@ function TablePlanner({ guests, selections, onRefresh }) {
 
   async function autoAssign() {
     setSaving(true)
-    // Mix companies — sort by company then interleave
-    const shuffled = [...guests].sort((a, b) => a.company.localeCompare(b.company))
-    const interleaved = []
-    const companies = [...new Set(shuffled.map(g => g.company))]
+
+    // Fisher-Yates shuffle — genuinely random each time
+    function shuffle(arr) {
+      const a = [...arr]
+      for (let i = a.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [a[i], a[j]] = [a[j], a[i]]
+      }
+      return a
+    }
+
+    // Group guests by company, shuffle within each company
+    const companies = [...new Set(guests.map(g => g.company))]
     const byCompany = {}
-    companies.forEach(c => { byCompany[c] = shuffled.filter(g => g.company === c) })
+    companies.forEach(c => { byCompany[c] = shuffle(guests.filter(g => g.company === c)) })
+
+    // Shuffle the company order too so tables start differently each run
+    const shuffledCompanies = shuffle(companies)
+
+    // Interleave one person from each company at a time
+    const interleaved = []
     let i = 0
-    while (interleaved.length < shuffled.length) {
-      companies.forEach(c => { if (byCompany[c][i]) interleaved.push(byCompany[c][i]) })
+    while (interleaved.length < guests.length) {
+      shuffledCompanies.forEach(c => { if (byCompany[c][i]) interleaved.push(byCompany[c][i]) })
       i++
     }
+
+    // Assign to tables — distributing evenly and mixing companies
     for (let idx = 0; idx < interleaved.length; idx++) {
       const tableNum = (idx % NUM_TABLES) + 1
       await supabase.from('dinner_guests').update({ table_number: tableNum }).eq('id', interleaved[idx].id)
     }
+
     await onRefresh()
     setSaving(false)
   }
