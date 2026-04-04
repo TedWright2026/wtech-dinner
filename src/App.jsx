@@ -20,7 +20,7 @@ export default function App() {
       <style>{globalStyles}</style>
       <div className="bg">
         <header className="hdr">
-          <img src="/wtech-logo.png" alt="WTech Fire Group" className="hdr-logo" />
+          <img src="https://raw.githubusercontent.com/TedWright2026/wtech-dinner/main/wtech-logo.png" alt="WTech Fire Group" className="hdr-logo" />
           <div className="hdr-divider" />
           <h1>Wednesday Evening<br /><em>Dinner Selection</em></h1>
           <p>Wednesday 22 April 2026 · O'Pescatore · Albufeira</p>
