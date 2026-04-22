@@ -8,8 +8,11 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
 const ADMIN_PASSWORD = 'wtech2026'
 const NAVY = '#1B4B8A'
 const RED = '#E8422A'
-const NUM_TABLES = 8
-const SEATS_PER_TABLE = 5
+const MIN_SEATS = 4
+const MAX_SEATS = 6
+const MAX_TABLES = 10
+const DEFAULT_TABLE_CONFIG = [5, 5, 5, 5, 5, 5, 5, 5]
+const TABLE_CONFIG_STORAGE_KEY = 'wtech-dinner-table-config'
 
 export default function App() {
   const [view, setView] = useState('guest') // 'guest' | 'admin'
@@ -426,14 +429,72 @@ function TablePlanner({ guests, selections, onRefresh }) {
   const [dragging, setDragging] = useState(null) // guest id
   const [saving, setSaving] = useState(false)
 
-  const assigned = guests.filter(g => g.table_number)
-  const unassigned = guests.filter(g => !g.table_number)
+  // Each table's capacity, stored in localStorage for persistence
+  const [tableConfig, setTableConfig] = useState(() => {
+    try {
+      const saved = localStorage.getItem(TABLE_CONFIG_STORAGE_KEY)
+      if (saved) {
+        const parsed = JSON.parse(saved)
+        if (Array.isArray(parsed) && parsed.length > 0 && parsed.every(n => typeof n === 'number' && n >= MIN_SEATS && n <= MAX_SEATS)) {
+          return parsed.slice(0, MAX_TABLES)
+        }
+      }
+    } catch (e) { /* ignore */ }
+    return [...DEFAULT_TABLE_CONFIG]
+  })
+
+  // Persist config changes
+  useEffect(() => {
+    localStorage.setItem(TABLE_CONFIG_STORAGE_KEY, JSON.stringify(tableConfig))
+  }, [tableConfig])
+
+  // If guests are assigned to a table beyond current config length, auto-expand
+  useEffect(() => {
+    const maxAssigned = guests.reduce((m, g) => Math.max(m, g.table_number || 0), 0)
+    if (maxAssigned > tableConfig.length && maxAssigned <= MAX_TABLES) {
+      setTableConfig(tc => {
+        const next = [...tc]
+        while (next.length < maxAssigned) next.push(5)
+        return next
+      })
+    }
+  }, [guests, tableConfig.length])
 
   function getTableGuests(tableNum) {
     return guests.filter(g => g.table_number === tableNum)
   }
 
+  function changeCapacity(tableIdx, delta) {
+    setTableConfig(tc => {
+      const next = [...tc]
+      const newVal = next[tableIdx] + delta
+      if (newVal < MIN_SEATS || newVal > MAX_SEATS) return tc
+      // Don't allow shrinking below currently-seated count
+      const seated = getTableGuests(tableIdx + 1).length
+      if (newVal < seated) return tc
+      next[tableIdx] = newVal
+      return next
+    })
+  }
+
+  function addTable() {
+    setTableConfig(tc => tc.length >= MAX_TABLES ? tc : [...tc, 5])
+  }
+
+  function removeTable(tableIdx) {
+    // Only allow removing the last table, and only if it's empty
+    if (tableIdx !== tableConfig.length - 1) return
+    if (getTableGuests(tableIdx + 1).length > 0) return
+    if (tableConfig.length <= 1) return
+    setTableConfig(tc => tc.slice(0, -1))
+  }
+
   async function assignGuest(guestId, tableNum) {
+    const capacity = tableConfig[tableNum - 1]
+    const currentCount = getTableGuests(tableNum).length
+    const guest = guests.find(g => g.id === guestId)
+    if (guest && guest.table_number === tableNum) return // no-op
+    if (currentCount >= capacity) return // full
     setSaving(true)
     await supabase.from('dinner_guests').update({ table_number: tableNum }).eq('id', guestId)
     await onRefresh()
@@ -476,10 +537,19 @@ function TablePlanner({ guests, selections, onRefresh }) {
       i++
     }
 
-    // Assign to tables — distributing evenly and mixing companies
+    // Round-robin across tables, respecting per-table capacity by skipping full tables
+    const remaining = tableConfig.map(cap => cap)
     for (let idx = 0; idx < interleaved.length; idx++) {
-      const tableNum = (idx % NUM_TABLES) + 1
+      let t = idx % tableConfig.length
+      let attempts = 0
+      while (remaining[t] === 0 && attempts < tableConfig.length) {
+        t = (t + 1) % tableConfig.length
+        attempts++
+      }
+      if (remaining[t] === 0) break // all tables full — remaining guests stay unassigned
+      const tableNum = t + 1
       await supabase.from('dinner_guests').update({ table_number: tableNum }).eq('id', interleaved[idx].id)
+      remaining[t]--
     }
 
     await onRefresh()
@@ -493,19 +563,32 @@ function TablePlanner({ guests, selections, onRefresh }) {
     setSaving(false)
   }
 
+  const unassigned = guests.filter(g => !g.table_number)
   const getSelection = (guestId) => selections.find(s => s.guest_id === guestId)
+  const totalCapacity = tableConfig.reduce((a, b) => a + b, 0)
 
   return (
     <div>
-      <div style={{ display: 'flex', gap: 10, marginBottom: 20, flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
         <button className="btn-primary" onClick={autoAssign} disabled={saving} style={{ width: 'auto', padding: '10px 20px' }}>
           ✦ Auto-Mix Tables
         </button>
-        <button className="btn-secondary" onClick={clearAll} disabled={saving} style={{ width: 'auto', padding: '10px 20px' }}>
+        <button className="btn-secondary" onClick={clearAll} disabled={saving} style={{ width: 'auto', padding: '10px 20px', marginTop: 0 }}>
           Clear All
         </button>
-        {saving && <span style={{ color: 'rgba(240,237,232,0.5)', lineHeight: '40px', fontSize: 14 }}>Saving…</span>}
+        <div style={{ marginLeft: 'auto', color: 'rgba(240,237,232,0.55)', fontSize: 13, display: 'flex', gap: 14 }}>
+          <span><strong style={{ color: '#f0ede8' }}>{tableConfig.length}</strong> tables</span>
+          <span><strong style={{ color: '#f0ede8' }}>{totalCapacity}</strong> seats</span>
+          <span><strong style={{ color: '#f0ede8' }}>{guests.length}</strong> guests</span>
+        </div>
+        {saving && <span style={{ color: 'rgba(240,237,232,0.5)', fontSize: 13 }}>Saving…</span>}
       </div>
+
+      {totalCapacity < guests.length && (
+        <div className="warn-banner">
+          ⚠ You have {guests.length} guests but only {totalCapacity} seats configured. Add tables or increase capacity to seat everyone.
+        </div>
+      )}
 
       <div className="planner-grid">
         {/* Unassigned */}
@@ -532,21 +615,33 @@ function TablePlanner({ guests, selections, onRefresh }) {
 
         {/* Tables */}
         <div className="tables-grid">
-          {Array.from({ length: NUM_TABLES }, (_, i) => i + 1).map(tableNum => {
+          {tableConfig.map((capacity, tableIdx) => {
+            const tableNum = tableIdx + 1
             const tableGuests = getTableGuests(tableNum)
-            const full = tableGuests.length >= SEATS_PER_TABLE
+            const full = tableGuests.length >= capacity
+            const isLast = tableIdx === tableConfig.length - 1
+            const canRemove = isLast && tableGuests.length === 0 && tableConfig.length > 1
+            const canShrink = capacity > MIN_SEATS && capacity > tableGuests.length
+            const canGrow = capacity < MAX_SEATS
             return (
               <div
-                key={tableNum}
+                key={tableIdx}
                 className={`table-card ${full ? 'full' : ''}`}
-                onDragOver={e => { if (!full || dragging && tableGuests.find(g => g.id === dragging)) e.preventDefault() }}
+                onDragOver={e => { if (!full) e.preventDefault() }}
                 onDrop={e => { e.preventDefault(); if (dragging && !full) assignGuest(dragging, tableNum) }}
               >
                 <div className="table-header">
                   <span className="table-title">Table {tableNum}</span>
-                  <span className="table-count" style={{ color: full ? RED : 'rgba(240,237,232,0.4)' }}>
-                    {tableGuests.length}/{SEATS_PER_TABLE}
-                  </span>
+                  <div className="capacity-controls">
+                    <button className="cap-btn" onClick={() => changeCapacity(tableIdx, -1)} disabled={!canShrink} title="Fewer seats">−</button>
+                    <span className="table-count" style={{ color: full ? RED : 'rgba(240,237,232,0.65)' }}>
+                      {tableGuests.length}/{capacity}
+                    </span>
+                    <button className="cap-btn" onClick={() => changeCapacity(tableIdx, 1)} disabled={!canGrow} title="More seats">+</button>
+                    {canRemove && (
+                      <button className="cap-btn cap-btn-remove" onClick={() => removeTable(tableIdx)} title="Remove this table">×</button>
+                    )}
+                  </div>
                 </div>
                 <div className="table-seats">
                   {tableGuests.map(g => {
@@ -562,7 +657,7 @@ function TablePlanner({ guests, selections, onRefresh }) {
                       </div>
                     )
                   })}
-                  {Array.from({ length: SEATS_PER_TABLE - tableGuests.length }, (_, i) => (
+                  {Array.from({ length: capacity - tableGuests.length }, (_, i) => (
                     <div key={`empty-${i}`} className="empty-seat">
                       Drop guest here
                     </div>
@@ -571,6 +666,14 @@ function TablePlanner({ guests, selections, onRefresh }) {
               </div>
             )
           })}
+
+          {tableConfig.length < MAX_TABLES && (
+            <button className="add-table-card" onClick={addTable}>
+              <div className="add-table-icon">+</div>
+              <div className="add-table-label">Add Table</div>
+              <div className="add-table-sub">up to {MAX_TABLES} tables</div>
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -759,9 +862,15 @@ const globalStyles = `
   .table-card { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 14px; padding: 16px; transition: border-color 0.2s; }
   .table-card.full { border-color: rgba(232,66,42,0.3); }
   .table-card:not(.full) { border-color: rgba(255,255,255,0.08); }
-  .table-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+  .table-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; gap: 8px; }
   .table-title { font-weight: 600; font-size: 14px; }
-  .table-count { font-size: 13px; font-weight: 600; }
+  .table-count { font-size: 13px; font-weight: 600; min-width: 32px; text-align: center; }
+  .capacity-controls { display: flex; align-items: center; gap: 5px; }
+  .cap-btn { width: 22px; height: 22px; border-radius: 6px; background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.1); color: rgba(240,237,232,0.75); font-size: 14px; line-height: 1; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0; font-family: inherit; transition: all 0.15s; }
+  .cap-btn:hover:not(:disabled) { background: rgba(27,75,138,0.3); border-color: ${NAVY}; color: #fff; }
+  .cap-btn:disabled { opacity: 0.25; cursor: not-allowed; }
+  .cap-btn-remove { margin-left: 4px; }
+  .cap-btn-remove:hover:not(:disabled) { background: rgba(232,66,42,0.28); border-color: ${RED}; color: #fff; }
   .table-seats { display: flex; flex-direction: column; gap: 6px; }
   .guest-chip { display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.09); border-radius: 8px; margin-bottom: 6px; font-size: 13px; cursor: grab; }
   .guest-chip:hover { background: rgba(255,255,255,0.09); }
@@ -772,6 +881,13 @@ const globalStyles = `
   .chip-company { font-size: 11px; color: rgba(240,237,232,0.4); margin-top: 1px; }
   .remove-btn { background: none; border: none; color: rgba(240,237,232,0.3); cursor: pointer; font-size: 18px; line-height: 1; padding: 0 2px; margin-left: auto; flex-shrink: 0; }
   .remove-btn:hover { color: ${RED}; }
+  .add-table-card { background: rgba(255,255,255,0.02); border: 1.5px dashed rgba(255,255,255,0.15); border-radius: 14px; padding: 24px 16px; cursor: pointer; color: rgba(240,237,232,0.5); display: flex; flex-direction: column; align-items: center; justify-content: center; transition: all 0.2s; font-family: inherit; min-height: 180px; }
+  .add-table-card:hover { border-color: ${NAVY}; background: rgba(27,75,138,0.08); color: #f0ede8; }
+  .add-table-icon { font-size: 32px; font-weight: 300; line-height: 1; margin-bottom: 6px; color: ${NAVY}; }
+  .add-table-card:hover .add-table-icon { color: #2a6dd9; }
+  .add-table-label { font-size: 13px; font-weight: 600; }
+  .add-table-sub { font-size: 11px; color: rgba(240,237,232,0.35); margin-top: 4px; }
+  .warn-banner { background: rgba(234,179,8,0.08); border: 1px solid rgba(234,179,8,0.22); border-radius: 10px; padding: 11px 16px; font-size: 13px; color: #fcd34d; margin-bottom: 16px; }
 
   /* NAME CARDS */
   .name-cards-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; }
